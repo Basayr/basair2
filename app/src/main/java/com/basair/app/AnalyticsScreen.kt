@@ -50,13 +50,13 @@ private fun dotsForLetter(letter: Char): Int = when (letter) {
 private fun wordKey(word: String): String {
     val noMarks = Normalizer.normalize(word, Normalizer.Form.NFD)
         .filter { Character.getType(it) !in intArrayOf(6, 7, 8) }
-    return noMarks.replace(Regex("[۞۩ـ،؛؟!:.()\\\\[\\\\]{}«»\\\\u06DD]"), "")
+    return noMarks.replace(Regex("[۞۩ـ،؛؟!:.()\\[\\]{}«»\\u06DD]"), "")
         .replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
         .replace('ٱ', 'ا').replace('ى', 'ي')
 }
 
 private fun wordsOf(ayah: Ayah): List<String> =
-    ayah.text.trim().split(Regex("\\\\s+")).filter { it.isNotBlank() }
+    ayah.text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
 
 private fun statsFor(verses: List<Ayah>): QuranStats {
     val letters = verses.flatMap { arabicBaseLetters(it.text) }
