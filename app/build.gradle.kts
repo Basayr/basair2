@@ -1,5 +1,6 @@
 import java.io.File
 import java.net.URL
+import java.net.HttpURLConnection
 import java.security.MessageDigest
 
 plugins {
@@ -16,22 +17,22 @@ tasks.register("downloadVerifiedQuranText") {
     outputs.upToDateWhen { false }
     doLast {
         val target = quranAsset.asFile
-        fun sha256(file: java.io.File): String =
-            java.security.MessageDigest.getInstance("SHA-256")
+        fun sha256(file: File): String =
+            MessageDigest.getInstance("SHA-256")
                 .digest(file.readBytes())
                 .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
 
         if (!target.exists() || sha256(target) != quranSha256) {
             target.parentFile.mkdirs()
-            val temporary = java.io.File(target.parentFile, target.name + ".download")
-            val source = java.net.URL(
+            val temporary = File(target.parentFile, target.name + ".download")
+            val source = URL(
                 "https://raw.githubusercontent.com/iptvchecker/content-tanzil/main/tanzil-uthmani-1.1.txt"
             )
-            source.openConnection().apply {
-                setRequestProperty("User-Agent", "Basair2-Android-Build")
-                connectTimeout = 30000
-                readTimeout = 60000
-            }.getInputStream().use { input ->
+            val connection = source.openConnection() as HttpURLConnection
+            connection.setRequestProperty("User-Agent", "Basair2-Android-Build")
+            connection.connectTimeout = 30000
+            connection.readTimeout = 60000
+            connection.inputStream.use { input ->
                 temporary.outputStream().use { output -> input.copyTo(output) }
             }
             check(temporary.length() == 1334737L) {
