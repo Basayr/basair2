@@ -112,31 +112,48 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun BasairScreen(ayat: List<Ayah>) {
-    var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<Ayah>>(emptyList()) }
-    var searched by remember { mutableStateOf(false) }
-    var currentSurah by remember { mutableIntStateOf(1) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val preferences = remember {
+        context.getSharedPreferences("basair_reading", android.content.Context.MODE_PRIVATE)
+    }
+    var query by rememberSaveable { mutableStateOf("") }
+    var searched by rememberSaveable { mutableStateOf(false) }
+    var currentSurah by rememberSaveable {
+        mutableIntStateOf(preferences.getInt("last_surah", 1).coerceIn(1, 114))
+    }
+    var fontSize by rememberSaveable { mutableIntStateOf(27) }
+    var menuExpanded by remember { mutableStateOf(false) }
+    var bookmarkSurah by remember { mutableIntStateOf(preferences.getInt("bookmark_surah", 1)) }
+    var bookmarkAyah by remember { mutableIntStateOf(preferences.getInt("bookmark_ayah", 1)) }
+    var message by remember { mutableStateOf("") }
 
     val currentSurahAyat = remember(ayat, currentSurah) {
         ayat.filter { it.surah == currentSurah }
     }
+    val results = remember(ayat, query, searched) {
+        if (!searched || query.isBlank()) emptyList()
+        else ayat.filter { it.text.contains(query, ignoreCase = false) }
+    }
     val visibleAyat = if (searched) results else currentSurahAyat
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
         Text(
             text = "بصائر",
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.headlineLarge,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.primary
         )
         Text(
             text = "القرآن الكريم بالرسم العثماني",
             modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyMedium
         )
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -146,60 +163,109 @@ private fun BasairScreen(ayat: List<Ayah>) {
                 onClick = {
                     currentSurah = (currentSurah - 1).coerceAtLeast(1)
                     searched = false
+                    query = ""
+                    preferences.edit().putInt("last_surah", currentSurah).apply()
                 },
                 enabled = currentSurah > 1 && ayat.isNotEmpty()
-            ) { Text("السابقة") }
-            Text(
-                text = "سورة ${surahNames[currentSurah - 1]}",
-                style = MaterialTheme.typography.titleLarge
-            )
+            ) { Text("السابق") }
+
+            androidx.compose.material3.Box {
+                Button(onClick = { menuExpanded = true }, enabled = ayat.isNotEmpty()) {
+                    Text("سورة ${surahNames[currentSurah - 1]} ▾")
+                }
+                androidx.compose.material3.DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    surahNames.forEachIndexed { index, name ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("${index + 1}. $name") },
+                            onClick = {
+                                currentSurah = index + 1
+                                searched = false
+                                query = ""
+                                menuExpanded = false
+                                preferences.edit().putInt("last_surah", currentSurah).apply()
+                            }
+                        )
+                    }
+                }
+            }
+
             Button(
                 onClick = {
                     currentSurah = (currentSurah + 1).coerceAtMost(114)
                     searched = false
+                    query = ""
+                    preferences.edit().putInt("last_surah", currentSurah).apply()
                 },
                 enabled = currentSurah < 114 && ayat.isNotEmpty()
-            ) { Text("التالية") }
+            ) { Text("التالي") }
         }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             BasicTextField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.weight(1f).padding(12.dp),
-                textStyle = TextStyle(fontSize = 18.sp, textAlign = TextAlign.Right),
+                textStyle = TextStyle(fontSize = 17.sp, textAlign = TextAlign.Right),
                 decorationBox = { inner ->
-                    if (query.isEmpty()) Text("ابحث بمطابقة النص كما هو")
+                    if (query.isEmpty()) Text("بحث حرفي في القرآن")
                     inner()
                 }
             )
             Button(onClick = {
-                searched = true
-                results = if (query.isEmpty()) emptyList()
-                else ayat.filter { it.text.contains(query, ignoreCase = false) }
-            }) { Text("ابحث") }
+                searched = query.isNotBlank()
+                message = if (query.isBlank()) "اكتب كلمة أو عبارة للبحث" else ""
+            }) { Text("بحث") }
             Button(onClick = {
                 query = ""
                 searched = false
-            }) { Text("قراءة") }
+                message = ""
+            }) { Text("إلغاء") }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                if (searched) "نتائج البحث: ${results.size}"
+                else "عدد الآيات: ${currentSurahAyat.size}",
+                style = MaterialTheme.typography.labelLarge
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("حجم الخط")
+                androidx.compose.material3.TextButton(
+                    onClick = { fontSize = (fontSize - 2).coerceAtLeast(20) }
+                ) { Text("−") }
+                Text("$fontSize")
+                androidx.compose.material3.TextButton(
+                    onClick = { fontSize = (fontSize + 2).coerceAtMost(40) }
+                ) { Text("+") }
+            }
+        }
+
+        if (message.isNotBlank()) {
+            Text(message, color = MaterialTheme.colorScheme.error)
         }
 
         if (ayat.isEmpty()) {
-            Text(
-                text = "تعذر تحميل نص القرآن. سيُضمّن النص العثماني الموثق تلقائياً عند بناء التطبيق.",
-                color = MaterialTheme.colorScheme.secondary,
-                textAlign = TextAlign.Center
-            )
-        } else {
-            if (searched) {
-                Text("نتائج المطابقة الحرفية: ${results.size}")
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("لم يتم تحميل نص القرآن.")
+                    Text("أعد بناء النسخة بعد إصلاح مصدر النص، وتأكد من وجود ملف القرآن داخل التطبيق.")
+                }
             }
+        } else {
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(visibleAyat) { ayah ->
                     Card(
@@ -208,23 +274,63 @@ private fun BasairScreen(ayat: List<Ayah>) {
                             containerColor = MaterialTheme.colorScheme.surfaceVariant
                         )
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
                             Text(
                                 text = ayah.text,
                                 modifier = Modifier.fillMaxWidth(),
-                                fontSize = 25.sp,
+                                fontSize = fontSize.sp,
                                 textAlign = TextAlign.Right,
-                                lineHeight = 46.sp
+                                lineHeight = (fontSize + 19).sp
                             )
-                            Text(
-                                text = "سورة ${surahNames[ayah.surah - 1]} — آية ${ayah.number}",
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                textAlign = TextAlign.End
-                            )
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${surahNames[ayah.surah - 1]} • الآية ${ayah.number}",
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                                androidx.compose.material3.TextButton(
+                                    onClick = {
+                                        bookmarkSurah = ayah.surah
+                                        bookmarkAyah = ayah.number
+                                        preferences.edit()
+                                            .putInt("bookmark_surah", ayah.surah)
+                                            .putInt("bookmark_ayah", ayah.number)
+                                            .apply()
+                                        message = "تم حفظ موضعك: ${surahNames[ayah.surah - 1]}، الآية ${ayah.number}"
+                                    }
+                                ) { Text("حفظ الموضع") }
+                            }
                         }
                     }
                 }
             }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.TextButton(
+                onClick = {
+                    currentSurah = bookmarkSurah.coerceIn(1, 114)
+                    searched = false
+                    query = ""
+                    message = "موضع الحفظ: ${surahNames[currentSurah - 1]}، الآية $bookmarkAyah"
+                },
+                enabled = ayat.isNotEmpty()
+            ) { Text("آخر موضع محفوظ") }
+            androidx.compose.material3.TextButton(
+                onClick = {
+                    currentSurah = preferences.getInt("last_surah", 1).coerceIn(1, 114)
+                    searched = false
+                    query = ""
+                },
+                enabled = ayat.isNotEmpty()
+            ) { Text("متابعة القراءة") }
         }
     }
 }
