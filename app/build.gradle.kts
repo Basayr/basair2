@@ -15,7 +15,7 @@ tasks.register("downloadVerifiedQuranText") {
         fun sha256(file: java.io.File): String =
             java.security.MessageDigest.getInstance("SHA-256")
                 .digest(file.readBytes())
-                .joinToString("") { "%02x".format(it) }
+                .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
 
         if (!target.exists() || sha256(target) != quranSha256) {
             target.parentFile.mkdirs()
