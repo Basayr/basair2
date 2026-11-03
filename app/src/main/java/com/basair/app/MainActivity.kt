@@ -19,10 +19,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -57,7 +60,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    BasairScreen(ayat = ayat)
+                    BasairHome(ayat = ayat)
                 }
             }
         }
@@ -110,6 +113,121 @@ class MainActivity : ComponentActivity() {
             android.util.Log.e("Basair", "Unable to read Quran asset", error)
             emptyList()
         }
+    }
+}
+
+
+@Composable
+private fun BasairHome(ayat: List<Ayah>) {
+    var showOriginalMushaf by rememberSaveable { mutableStateOf(true) }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = { showOriginalMushaf = true },
+                enabled = !showOriginalMushaf
+            ) { Text("المصحف الأصلي") }
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = { showOriginalMushaf = false },
+                enabled = showOriginalMushaf
+            ) { Text("النص والبحث") }
+        }
+        if (showOriginalMushaf) OriginalMushafScreen()
+        else BasairScreen(ayat = ayat)
+    }
+}
+
+@Composable
+private fun OriginalMushafScreen() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val preferences = remember {
+        context.getSharedPreferences("basair_reading", android.content.Context.MODE_PRIVATE)
+    }
+    var page by rememberSaveable {
+        mutableIntStateOf(preferences.getInt("mushaf_page", 1).coerceIn(1, 604))
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.TextButton(
+                onClick = {
+                    page = (page - 1).coerceAtLeast(1)
+                    preferences.edit().putInt("mushaf_page", page).apply()
+                },
+                enabled = page > 1
+            ) { Text("السابق") }
+            Text("صفحة $page من 604", style = MaterialTheme.typography.titleMedium)
+            androidx.compose.material3.TextButton(
+                onClick = {
+                    page = (page + 1).coerceAtMost(604)
+                    preferences.edit().putInt("mushaf_page", page).apply()
+                },
+                enabled = page < 604
+            ) { Text("التالي") }
+        }
+        Slider(
+            value = page.toFloat(),
+            onValueChange = {
+                page = it.toInt().coerceIn(1, 604)
+                preferences.edit().putInt("mushaf_page", page).apply()
+            },
+            valueRange = 1f..604f
+        )
+        AndroidView(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            factory = { viewContext ->
+                WebView(viewContext).apply {
+                    setBackgroundColor(android.graphics.Color.WHITE)
+                    settings.javaScriptEnabled = false
+                    settings.domStorageEnabled = false
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    settings.setSupportZoom(true)
+                    settings.builtInZoomControls = true
+                    settings.displayZoomControls = false
+                }
+            },
+            update = { webView ->
+                val pageFile = page.toString().padStart(3, '0') + ".svg"
+                val html = """
+                    <!doctype html>
+                    <html lang="ar">
+                    <head>
+                      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0">
+                      <style>
+                        html, body { margin:0; padding:0; background:#ffffff; width:100%; }
+                        img { display:block; width:100%; height:auto; margin:0 auto; }
+                      </style>
+                    </head>
+                    <body><img alt="صفحة المصحف الشريف" src="$pageFile"></body>
+                    </html>
+                """.trimIndent()
+                webView.loadDataWithBaseURL(
+                    "https://raw.githubusercontent.com/batoulapps/quran-svg/main/svg/",
+                    html,
+                    "text/html",
+                    "UTF-8",
+                    null
+                )
+            }
+        )
+        Text(
+            "صفحات مصحف المدينة النبوية – رواية حفص عن عاصم",
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelSmall
+        )
     }
 }
 
