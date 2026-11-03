@@ -192,7 +192,7 @@ private fun OriginalMushafScreen() {
             factory = { viewContext ->
                 WebView(viewContext).apply {
                     setBackgroundColor(android.graphics.Color.WHITE)
-                    settings.javaScriptEnabled = false
+                    settings.javaScriptEnabled = true
                     settings.domStorageEnabled = false
                     settings.useWideViewPort = true
                     settings.loadWithOverviewMode = true
@@ -209,11 +209,41 @@ private fun OriginalMushafScreen() {
                     <head>
                       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0">
                       <style>
-                        html, body { margin:0; padding:0; background:#ffffff; width:100%; }
-                        img { display:block; width:100%; height:auto; margin:0 auto; }
+                        html, body { margin:0; padding:0; background:#ffffff; width:100%; min-height:100%; }
+                        svg { display:block; width:100%; height:auto; margin:0 auto; }
+                        #status { padding:24px; color:#555; text-align:center; font-family:sans-serif; }
                       </style>
                     </head>
-                    <body><img alt="صفحة المصحف الشريف" src="$pageFile"></body>
+                    <body>
+                      <div id="status">جارٍ تحميل صفحة المصحف…</div>
+                      <script>
+                        fetch("$pageFile").then(function(response) {
+                          if (!response.ok) throw new Error("HTTP " + response.status);
+                          return response.text();
+                        }).then(function(source) {
+                          document.body.innerHTML = source;
+                          var root = document.querySelector("svg");
+                          if (!root) throw new Error("SVG page is missing");
+                          root.removeAttribute("width");
+                          root.removeAttribute("height");
+                          root.setAttribute("style", "width:100%;height:auto;display:block");
+                          requestAnimationFrame(function() {
+                            try {
+                              var bounds = root.getBBox();
+                              if (bounds.width > 0 && bounds.height > 0) {
+                                var margin = Math.max(bounds.width, bounds.height) * 0.04;
+                                root.setAttribute("viewBox",
+                                  (bounds.x - margin) + " " + (bounds.y - margin) + " " +
+                                  (bounds.width + margin * 2) + " " + (bounds.height + margin * 2));
+                              }
+                            } catch (ignored) {}
+                          });
+                        }).catch(function(error) {
+                          document.getElementById("status").textContent =
+                            "تعذر تحميل الصفحة. تحقق من اتصال الإنترنت ثم أعد المحاولة.";
+                        });
+                      </script>
+                    </body>
                     </html>
                 """.trimIndent()
                 webView.loadDataWithBaseURL(
