@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
@@ -128,6 +129,8 @@ private fun BasairScreen(ayat: List<Ayah>) {
     var bookmarkSurah by remember { mutableIntStateOf(preferences.getInt("bookmark_surah", 1)) }
     var bookmarkAyah by remember { mutableIntStateOf(preferences.getInt("bookmark_ayah", 1)) }
     var message by remember { mutableStateOf("") }
+    var pendingScrollAyah by remember { mutableIntStateOf(0) }
+    val listState = rememberLazyListState()
 
     val currentSurahAyat = remember(ayat, currentSurah) {
         ayat.filter { it.surah == currentSurah }
@@ -137,6 +140,14 @@ private fun BasairScreen(ayat: List<Ayah>) {
         else ayat.filter { it.text.contains(query, ignoreCase = false) }
     }
     val visibleAyat = if (searched) results else currentSurahAyat
+
+    LaunchedEffect(currentSurah, pendingScrollAyah, searched) {
+        if (!searched && pendingScrollAyah > 0) {
+            val targetIndex = currentSurahAyat.indexOfFirst { it.number == pendingScrollAyah }
+            if (targetIndex >= 0) listState.animateScrollToItem(targetIndex)
+            pendingScrollAyah = 0
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp),
@@ -266,6 +277,7 @@ private fun BasairScreen(ayat: List<Ayah>) {
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -319,6 +331,7 @@ private fun BasairScreen(ayat: List<Ayah>) {
             androidx.compose.material3.TextButton(
                 onClick = {
                     currentSurah = bookmarkSurah.coerceIn(1, 114)
+                    pendingScrollAyah = bookmarkAyah
                     searched = false
                     query = ""
                     message = "موضع الحفظ: ${surahNames[currentSurah - 1]}، الآية $bookmarkAyah"
