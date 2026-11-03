@@ -14,42 +14,35 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.Normalizer
-import java.util.Locale
 
 private data class QuranStats(
-    val verses: Int,
-    val words: Int,
-    val letters: Int,
-    val dottedLetters: Int,
-    val undottedLetters: Int,
-    val dots: Int
+    val verses: Int, val words: Int, val letters: Int,
+    val dottedLetters: Int, val undottedLetters: Int, val dots: Int
 )
+private data class PhraseStat(val phrase: String, val count: Int, val places: List<String>)
 
-private fun arabicBaseLetters(text: String): List<Char> {
-    val normalized = Normalizer.normalize(text, Normalizer.Form.NFD)
-    return normalized.filter { ch ->
-        Character.UnicodeBlock.of(ch) == Character.UnicodeBlock.ARABIC &&
-            Character.getType(ch) in intArrayOf(
-                Character.UPPERCASE_LETTER.toInt(),
-                Character.LOWERCASE_LETTER.toInt(),
-                Character.OTHER_LETTER.toInt(),
-                Character.TITLECASE_LETTER.toInt(),
-                Character.MODIFIER_LETTER.toInt()
-            )
-    }.map { ch ->
-        when (ch) {
-            'أ', 'إ', 'آ', 'ٱ' -> 'ا'
-            'ؤ' -> 'و'
-            'ئ', 'ى', 'ے' -> 'ي'
-            'ة' -> 'ه'
-            else -> ch
-        }
-    }
+private fun isArabicLetter(ch: Char): Boolean {
+    val type = Character.getType(ch)
+    return Character.UnicodeBlock.of(ch) in setOf(
+        Character.UnicodeBlock.ARABIC,
+        Character.UnicodeBlock.ARABIC_SUPPLEMENT,
+        Character.UnicodeBlock.ARABIC_EXTENDED_A,
+        Character.UnicodeBlock.ARABIC_PRESENTATION_FORMS_A,
+        Character.UnicodeBlock.ARABIC_PRESENTATION_FORMS_B
+    ) && type in intArrayOf(
+        Character.UPPERCASE_LETTER.toInt(), Character.LOWERCASE_LETTER.toInt(),
+        Character.OTHER_LETTER.toInt(), Character.TITLECASE_LETTER.toInt(),
+        Character.MODIFIER_LETTER.toInt()
+    )
 }
 
+/* Preserve the written glyph: ة, ى and hamza forms are not merged in letter counts. */
+private fun arabicBaseLetters(text: String): List<Char> =
+    Normalizer.normalize(text, Normalizer.Form.NFD).filter(::isArabicLetter)
+
 private fun dotsForLetter(letter: Char): Int = when (letter) {
-    'ب', 'ج', 'خ', 'ذ', 'ز', 'ض', 'ظ', 'غ', 'ف', 'ن' -> 1
-    'ت', 'ق', 'ي' -> 2
+    'ب', 'ج', 'خ', 'ذ', 'ز', 'ض', 'ظ', 'غ', 'ف', 'ن', 'ة' -> 1
+    'ت', 'ق', 'ي', 'ى' -> 2
     'ث', 'ش' -> 3
     else -> 0
 }
@@ -57,22 +50,40 @@ private fun dotsForLetter(letter: Char): Int = when (letter) {
 private fun wordKey(word: String): String {
     val noMarks = Normalizer.normalize(word, Normalizer.Form.NFD)
         .filter { Character.getType(it) !in intArrayOf(6, 7, 8) }
-    return noMarks.replace(Regex("[۞۩ـ،؛؟!:.()\\[\\]{}]"), "")
+    return noMarks.replace(Regex("[۞۩ـ،؛؟!:.()\\\\[\\\\]{}«»\\\\u06DD]"), "")
         .replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
         .replace('ٱ', 'ا').replace('ى', 'ي')
 }
+
+private fun wordsOf(ayah: Ayah): List<String> =
+    ayah.text.trim().split(Regex("\\\\s+")).filter { it.isNotBlank() }
 
 private fun statsFor(verses: List<Ayah>): QuranStats {
     val letters = verses.flatMap { arabicBaseLetters(it.text) }
     val dotted = letters.count { dotsForLetter(it) > 0 }
     return QuranStats(
-        verses = verses.size,
-        words = verses.sumOf { it.text.trim().split(Regex("\\s+")).count { token -> token.isNotBlank() } },
-        letters = letters.size,
-        dottedLetters = dotted,
-        undottedLetters = letters.size - dotted,
-        dots = letters.sumOf { dotsForLetter(it) }
+        verses.size, verses.sumOf { wordsOf(it).size }, letters.size,
+        dotted, letters.size - dotted, letters.sumOf(::dotsForLetter)
     )
+}
+
+private fun repeatedPhrases(verses: List<Ayah>): List<PhraseStat> {
+    val found = linkedMapOf<String, Pair<String, MutableList<String>>>()
+    verses.forEach { ayah ->
+        val words = wordsOf(ayah)
+        if (words.size < 3) return@forEach
+        val seenInAyah = mutableSetOf<String>()
+        for (i in 0..words.size - 3) {
+            val original = words.subList(i, i + 3).joinToString(" ")
+            val key = words.subList(i, i + 3).joinToString(" ") { wordKey(it) }
+            if (key.length < 5 || !seenInAyah.add(key)) continue
+            found.getOrPut(key) { original to mutableListOf() }.second
+                .add("${surahNames[ayah.surah - 1]}، الآية ${ayah.number}")
+        }
+    }
+    return found.values.filter { it.second.size > 1 }
+        .map { PhraseStat(it.first, it.second.size, it.second.toList()) }
+        .sortedByDescending { it.count }.take(30)
 }
 
 @Composable
@@ -81,90 +92,139 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
     var selectedSurah by rememberSaveable { mutableIntStateOf(1) }
     var menuExpanded by remember { mutableStateOf(false) }
     var search by rememberSaveable { mutableStateOf("") }
-    val surahAyat = remember(ayat, selectedSurah) { ayat.filter { it.surah == selectedSurah } }
-    val activeAyat = if (scope == 0) ayat else surahAyat
-    val stats = remember(activeAyat) { statsFor(activeAyat) }
-    val frequency = remember(activeAyat) {
-        activeAyat.flatMap { it.text.trim().split(Regex("\\s+")) }
-            .filter { it.isNotBlank() }
-            .groupingBy { wordKey(it) }.eachCount()
-            .filterKeys { it.isNotBlank() }
-            .entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
-            .take(20)
+    val activeAyat = remember(ayat, scope, selectedSurah) {
+        if (scope == 0) ayat else ayat.filter { it.surah == selectedSurah }
     }
-    val occurrences = remember(ayat, search) {
-        if (search.isBlank()) emptyList()
-        else ayat.filter { it.text.contains(search, ignoreCase = false) }
+    val stats = remember(activeAyat) { statsFor(activeAyat) }
+    val letterFrequency = remember(activeAyat) {
+        activeAyat.flatMap { arabicBaseLetters(it.text) }.groupingBy { it }.eachCount()
+            .entries.sortedWith(compareByDescending<Map.Entry<Char, Int>> { it.value }.thenBy { it.key })
+    }
+    val wordFrequency = remember(activeAyat) {
+        activeAyat.flatMap { wordsOf(it) }.map { wordKey(it) }.filter { it.isNotBlank() }
+            .groupingBy { it }.eachCount()
+            .entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .take(30)
+    }
+    val phrases = remember(activeAyat) { repeatedPhrases(activeAyat) }
+    val occurrences = remember(activeAyat, search) {
+        if (search.isBlank()) emptyList() else activeAyat.filter { it.text.contains(search, false) }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Text("لوحة التدبر والإحصاء", style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             FilterChip(selected = scope == 0, onClick = { scope = 0 }, label = { Text("القرآن كاملاً") })
-            FilterChip(selected = scope == 1, onClick = { scope = 1 }, label = { Text("سورة محددة") })
+            FilterChip(selected = scope == 1, onClick = { scope = 1 }, label = { Text("سورة") })
             if (scope == 1) {
                 Box {
-                    TextButton(onClick = { menuExpanded = true }) { Text(surahNames[selectedSurah - 1] + " ▾") }
+                    TextButton(onClick = { menuExpanded = true }) {
+                        Text(surahNames[selectedSurah - 1] + " ▾")
+                    }
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                         surahNames.forEachIndexed { index, name ->
-                            DropdownMenuItem(text = { Text("${index + 1}. $name") }, onClick = {
-                                selectedSurah = index + 1
-                                menuExpanded = false
-                            })
+                            DropdownMenuItem(text = { Text("${index + 1}. $name") },
+                                onClick = { selectedSurah = index + 1; menuExpanded = false })
                         }
                     }
                 }
             }
         }
         if (ayat.isEmpty()) {
-            Text("بيانات القرآن غير متاحة. لا يمكن حساب الإحصاءات قبل تحميل النص.")
+            Text("بيانات القرآن غير متاحة؛ تعذر حساب الإحصاءات.")
         } else {
-            Text(if (scope == 0) "نتائج القرآن الكريم" else "نتائج سورة ${surahNames[selectedSurah - 1]}",
-                style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                StatCard("الآيات", stats.verses.toString(), Modifier.weight(1f))
-                StatCard("الكلمات", stats.words.toString(), Modifier.weight(1f))
-                StatCard("الحروف", stats.letters.toString(), Modifier.weight(1f))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                StatCard("حروف منقوطة", stats.dottedLetters.toString(), Modifier.weight(1f))
-                StatCard("غير منقوطة", stats.undottedLetters.toString(), Modifier.weight(1f))
-                StatCard("مجموع النقاط", stats.dots.toString(), Modifier.weight(1f))
-            }
-            Text("تنبيه منهجي: العدّ هنا يحصي الحروف العربية بعد فصل التشكيل، ويجمع أشكال الألف والياء والتاء المربوطة وفق قواعد مبينة في التطبيق. النقاط هي نقاط جسم الحرف، ولا تشمل علامات التشكيل أو علامات الوقف.")
-            Divider()
-            Text("أكثر 20 كلمة تكراراً (بعد إزالة التشكيل وتوحيد بعض صور الحروف)", style = MaterialTheme.typography.titleMedium)
-            LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                items(frequency) { entry ->
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(entry.key, fontSize = 18.sp)
-                        Text(entry.value.toString())
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                item {
+                    Text(if (scope == 0) "الإحصاء العام للقرآن الكريم"
+                        else "إحصاءات سورة ${surahNames[selectedSurah - 1]}",
+                        style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        StatCard("الآيات", stats.verses.toString(), Modifier.weight(1f))
+                        StatCard("الكلمات", stats.words.toString(), Modifier.weight(1f))
+                        StatCard("الحروف", stats.letters.toString(), Modifier.weight(1f))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        StatCard("منقوطة", stats.dottedLetters.toString(), Modifier.weight(1f))
+                        StatCard("غير منقوطة", stats.undottedLetters.toString(), Modifier.weight(1f))
+                        StatCard("النقاط", stats.dots.toString(), Modifier.weight(1f))
+                    }
+                    Text("منهج العدّ: تُفصل علامات التشكيل، وتُحصى أشكال الحروف كما كُتبت دون دمج التاء المربوطة أو الألف المقصورة أو صور الهمزة. النقاط محسوبة على الحروف العربية الشائعة؛ وبعض العلامات والرسم العثماني الخاص يحتاج إلى مراجعة متخصصة.")
+                    Divider()
+                    Text("تكرار الحروف", style = MaterialTheme.typography.titleMedium)
+                    Text("الحرف — مرات الورود — مجموع نقاطه", style = MaterialTheme.typography.labelSmall)
+                }
+                items(letterFrequency) { entry ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(entry.key.toString(), fontSize = 21.sp)
+                        Text("${entry.value} مرة")
+                        Text("${entry.value * dotsForLetter(entry.key)} نقطة")
                     }
                 }
-            }
-            Divider()
-            Text("البحث عن مواضع كلمة أو عبارة", style = MaterialTheme.typography.titleMedium)
-            BasicTextField(
-                value = search, onValueChange = { search = it },
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
-                textStyle = TextStyle(fontSize = 17.sp, textAlign = TextAlign.Right),
-                decorationBox = { inner -> if (search.isEmpty()) Text("اكتب الكلمة أو العبارة كما تظهر في المصحف") ; inner() }
-            )
-            Text("عدد الآيات التي تحتوي النص حرفياً: ${occurrences.size}")
-            if (search.isNotBlank()) {
-                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items(occurrences.take(100)) { verse ->
-                        Card {
-                            Column(Modifier.fillMaxWidth().padding(8.dp)) {
-                                Text(verse.text, textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth())
-                                Text("${surahNames[verse.surah - 1]} • الآية ${verse.number}",
-                                    style = MaterialTheme.typography.labelSmall)
-                            }
+                item {
+                    Divider()
+                    Text("أكثر 30 كلمة تكراراً", style = MaterialTheme.typography.titleMedium)
+                    Text("توحيد بعض صور الألف والياء وإزالة التشكيل لأغراض الإحصاء فقط.")
+                }
+                items(wordFrequency) { entry ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(entry.key, fontSize = 17.sp)
+                        Text("${entry.value} مرة")
+                    }
+                }
+                item {
+                    Divider()
+                    Text("عبارات ثلاثية متكررة", style = MaterialTheme.typography.titleMedium)
+                    Text("العبارات المتجاورة المتكررة ومواضعها بعد تطبيع إحصائي للكلمات.")
+                }
+                items(phrases) { phrase ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(9.dp)) {
+                            Text(phrase.phrase, fontSize = 17.sp, textAlign = TextAlign.Right,
+                                modifier = Modifier.fillMaxWidth())
+                            Text("تكررت ${phrase.count} مرات")
+                            Text(phrase.places.take(8).joinToString(" • "),
+                                style = MaterialTheme.typography.labelSmall)
                         }
+                    }
+                }
+                item {
+                    Divider()
+                    Text("البحث عن مواضع كلمة أو عبارة", style = MaterialTheme.typography.titleMedium)
+                    BasicTextField(value = search, onValueChange = { search = it },
+                        modifier = Modifier.fillMaxWidth().padding(10.dp),
+                        textStyle = TextStyle(fontSize = 17.sp, textAlign = TextAlign.Right),
+                        decorationBox = { inner ->
+                            if (search.isEmpty()) Text("اكتب النص كما يظهر في المصحف")
+                            inner()
+                        })
+                    Text("عدد الآيات المطابقة حرفياً: ${occurrences.size}")
+                }
+                items(occurrences.take(200)) { verse ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(8.dp)) {
+                            Text(verse.text, textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth())
+                            Text("${surahNames[verse.surah - 1]} • الآية ${verse.number}",
+                                style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+                item {
+                    Divider()
+                    Text("إحصاء كل آية", style = MaterialTheme.typography.titleMedium)
+                    Text("عدد الكلمات والحروف والنقاط في كل آية ضمن النطاق المختار.")
+                }
+                items(activeAyat) { verse ->
+                    val verseLetters = remember(verse.text) { arabicBaseLetters(verse.text) }
+                    val verseWords = remember(verse.text) { wordsOf(verse).size }
+                    val verseDots = remember(verse.text) { verseLetters.sumOf(::dotsForLetter) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("${verse.number}.")
+                        Text("${verseWords} كلمة")
+                        Text("${verseLetters.size} حرف")
+                        Text("${verseDots} نقطة")
                     }
                 }
             }
@@ -175,7 +235,8 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
 @Composable
 private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     Card(modifier = modifier) {
-        Column(Modifier.fillMaxWidth().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth().padding(7.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
             Text(value, style = MaterialTheme.typography.titleLarge)
             Text(label, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
         }
