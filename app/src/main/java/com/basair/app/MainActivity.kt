@@ -217,7 +217,7 @@ private fun OriginalMushafScreen() {
                     </html>
                 """.trimIndent()
                 webView.loadDataWithBaseURL(
-                    "https://raw.githubusercontent.com/batoulapps/quran-svg/main/svg/",
+                    "https://cdn.quran.ws/svg/pages/v1.1.1/hafs-kfqc/",
                     html,
                     "text/html",
                     "UTF-8",
