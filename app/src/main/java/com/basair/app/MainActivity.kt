@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.sp
 
 data class Ayah(val surah: Int, val number: Int, val text: String)
 
-private val surahNames = listOf(
+internal val surahNames = listOf(
     "الفاتحة", "البقرة", "آل عمران", "النساء", "المائدة", "الأنعام", "الأعراف",
     "الأنفال", "التوبة", "يونس", "هود", "يوسف", "الرعد", "إبراهيم", "الحجر",
     "النحل", "الإسراء", "الكهف", "مريم", "طه", "الأنبياء", "الحج", "المؤمنون",
@@ -119,26 +119,28 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun BasairHome(ayat: List<Ayah>) {
-    var showOriginalMushaf by rememberSaveable { mutableStateOf(true) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            Button(
-                modifier = Modifier.weight(1f),
-                onClick = { showOriginalMushaf = true },
-                enabled = !showOriginalMushaf
-            ) { Text("المصحف الأصلي") }
-            Button(
-                modifier = Modifier.weight(1f),
-                onClick = { showOriginalMushaf = false },
-                enabled = showOriginalMushaf
-            ) { Text("النص والبحث") }
+            Button(modifier = Modifier.weight(1f), onClick = { selectedTab = 0 }, enabled = selectedTab != 0) {
+                Text("المصحف")
+            }
+            Button(modifier = Modifier.weight(1f), onClick = { selectedTab = 1 }, enabled = selectedTab != 1) {
+                Text("التدبر والإحصاء")
+            }
+            Button(modifier = Modifier.weight(1f), onClick = { selectedTab = 2 }, enabled = selectedTab != 2) {
+                Text("النص والبحث")
+            }
         }
         Box(modifier = Modifier.weight(1f)) {
-            if (showOriginalMushaf) OriginalMushafScreen()
-            else BasairScreen(ayat = ayat)
+            when (selectedTab) {
+                0 -> OriginalMushafScreen()
+                1 -> AnalyticsScreen(ayat = ayat)
+                else -> BasairScreen(ayat = ayat)
+            }
         }
     }
 }
