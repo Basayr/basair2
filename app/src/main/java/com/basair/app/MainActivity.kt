@@ -136,8 +136,10 @@ private fun BasairHome(ayat: List<Ayah>) {
                 enabled = showOriginalMushaf
             ) { Text("النص والبحث") }
         }
-        if (showOriginalMushaf) OriginalMushafScreen()
-        else BasairScreen(ayat = ayat)
+        Box(modifier = Modifier.weight(1f)) {
+            if (showOriginalMushaf) OriginalMushafScreen()
+            else BasairScreen(ayat = ayat)
+        }
     }
 }
 
@@ -182,7 +184,8 @@ private fun OriginalMushafScreen() {
                 page = it.toInt().coerceIn(1, 604)
                 preferences.edit().putInt("mushaf_page", page).apply()
             },
-            valueRange = 1f..604f
+            valueRange = 1f..604f,
+            steps = 602
         )
         AndroidView(
             modifier = Modifier.weight(1f).fillMaxWidth(),
