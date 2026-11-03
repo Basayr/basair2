@@ -38,7 +38,7 @@ private fun isArabicLetter(ch: Char): Boolean {
 
 /* Preserve the written glyph: ة, ى and hamza forms are not merged in letter counts. */
 private fun arabicBaseLetters(text: String): List<Char> =
-    Normalizer.normalize(text, Normalizer.Form.NFD).filter(::isArabicLetter)
+    Normalizer.normalize(text, Normalizer.Form.NFD).filter(::isArabicLetter).toList()
 
 private fun dotsForLetter(letter: Char): Int = when (letter) {
     'ب', 'ج', 'خ', 'ذ', 'ز', 'ض', 'ظ', 'غ', 'ف', 'ن', 'ة' -> 1
