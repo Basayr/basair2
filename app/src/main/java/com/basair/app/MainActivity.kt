@@ -18,12 +18,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
 import androidx.compose.ui.Modifier
@@ -58,8 +60,33 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val ayat = readQuranAsset()
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+            val basairGreen = Color(0xFF176B45)
+            val basairDeepGreen = Color(0xFF104B34)
+            val basairMint = Color(0xFFEAF4EC)
+            val basairGold = Color(0xFFC6A45A)
+            MaterialTheme(
+                colorScheme = lightColorScheme(
+                    primary = basairGreen,
+                    onPrimary = Color.White,
+                    primaryContainer = Color(0xFFD5EBDD),
+                    onPrimaryContainer = basairDeepGreen,
+                    secondary = basairGold,
+                    onSecondary = Color(0xFF241B08),
+                    secondaryContainer = Color(0xFFF2E8D0),
+                    onSecondaryContainer = Color(0xFF453719),
+                    background = Color(0xFFF7FAF6),
+                    onBackground = Color(0xFF1C2B22),
+                    surface = Color(0xFFFFFEFA),
+                    onSurface = Color(0xFF1C2B22),
+                    surfaceVariant = basairMint,
+                    onSurfaceVariant = Color(0xFF30483A),
+                    outline = Color(0xFFB7CDBD)
+                )
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
                     BasairHome(ayat = ayat)
                 }
             }
