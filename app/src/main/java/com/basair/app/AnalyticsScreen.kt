@@ -36,13 +36,14 @@ private fun isArabicLetter(ch: Char): Boolean {
     )
 }
 
-/* Preserve the written glyph: ة, ى and hamza forms are not merged in letter counts. */
+/* Count the written Arabic letter code points as they appear; do not decompose
+   hamza-bearing letters or merge distinct written forms before counting. */
 private fun arabicBaseLetters(text: String): List<Char> =
-    Normalizer.normalize(text, Normalizer.Form.NFD).filter(::isArabicLetter).toList()
+    text.filter(::isArabicLetter).toList()
 
 private fun dotsForLetter(letter: Char): Int = when (letter) {
-    'ب', 'ج', 'خ', 'ذ', 'ز', 'ض', 'ظ', 'غ', 'ف', 'ن', 'ة' -> 1
-    'ت', 'ق', 'ي', 'ى' -> 2
+    'ب', 'ج', 'خ', 'ذ', 'ز', 'ض', 'ظ', 'غ', 'ف', 'ن' -> 1
+    'ت', 'ق', 'ي', 'ة' -> 2
     'ث', 'ش' -> 3
     else -> 0
 }
@@ -151,7 +152,7 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
                         StatCard("غير منقوطة", stats.undottedLetters.toString(), Modifier.weight(1f))
                         StatCard("النقاط", stats.dots.toString(), Modifier.weight(1f))
                     }
-                    Text("منهج العدّ: تُفصل علامات التشكيل، وتُحصى أشكال الحروف كما كُتبت دون دمج التاء المربوطة أو الألف المقصورة أو صور الهمزة. النقاط محسوبة على الحروف العربية الشائعة؛ وبعض العلامات والرسم العثماني الخاص يحتاج إلى مراجعة متخصصة.")
+                    Text("منهج العدّ: تُحصى الحروف العربية المكتوبة كما تظهر دون تفكيك الهمزات أو دمج صور الحروف، وتُستبعد علامات التشكيل من عدد الحروف. الألف المقصورة (ى) بلا نقاط، والتاء المربوطة (ة) بنقطتين. حساب النقاط يعتمد جدول الحروف العربية الشائعة؛ وتبقى العلامات والرسم العثماني الخاص بحاجة إلى تدقيق متخصص.")
                     Divider()
                     Text("تكرار الحروف", style = MaterialTheme.typography.titleMedium)
                     Text("الحرف — مرات الورود — مجموع نقاطه", style = MaterialTheme.typography.labelSmall)
