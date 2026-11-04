@@ -18,6 +18,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Slider
@@ -148,18 +150,29 @@ class MainActivity : ComponentActivity() {
 private fun BasairHome(ayat: List<Ayah>) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
         ) {
-            Button(modifier = Modifier.weight(1f), onClick = { selectedTab = 0 }, enabled = selectedTab != 0) {
-                Text("المصحف")
-            }
-            Button(modifier = Modifier.weight(1f), onClick = { selectedTab = 1 }, enabled = selectedTab != 1) {
-                Text("التدبر والإحصاء")
-            }
-            Button(modifier = Modifier.weight(1f), onClick = { selectedTab = 2 }, enabled = selectedTab != 2) {
-                Text("النص والبحث")
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        "بصائر",
+                        color = Color.White,
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    Text(
+                        "رفيقك في قراءة القرآن وتدبّره",
+                        color = Color(0xFFE2F1E7),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Text("۞", color = Color(0xFFE6CC8D), fontSize = 34.sp)
             }
         }
         Box(modifier = Modifier.weight(1f)) {
@@ -168,6 +181,29 @@ private fun BasairHome(ayat: List<Ayah>) {
                 1 -> AnalyticsScreen(ayat = ayat)
                 else -> BasairScreen(ayat = ayat)
             }
+        }
+        NavigationBar(
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary
+        ) {
+            NavigationBarItem(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                icon = { Text("۞", fontSize = 19.sp) },
+                label = { Text("المصحف") }
+            )
+            NavigationBarItem(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                icon = { Text("✧", fontSize = 19.sp) },
+                label = { Text("التدبر والإحصاء") }
+            )
+            NavigationBarItem(
+                selected = selectedTab == 2,
+                onClick = { selectedTab = 2 },
+                icon = { Text("⌕", fontSize = 21.sp) },
+                label = { Text("النص والبحث") }
+            )
         }
     }
 }
