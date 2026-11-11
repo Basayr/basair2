@@ -230,20 +230,20 @@ private fun OriginalMushafScreen() {
         ) {
             androidx.compose.material3.TextButton(
                 onClick = {
-                    page = (page - 1).coerceAtLeast(1)
-                    sliderPage = page
+                    sliderPage = (sliderPage - 1).coerceAtLeast(1)
+                    page = sliderPage
                     preferences.edit().putInt("mushaf_page", page).apply()
                 },
-                enabled = page > 1
+                enabled = sliderPage > 1
             ) { Text("السابق") }
             Text("صفحة $sliderPage من 604", style = MaterialTheme.typography.titleMedium)
             androidx.compose.material3.TextButton(
                 onClick = {
-                    page = (page + 1).coerceAtMost(604)
-                    sliderPage = page
+                    sliderPage = (sliderPage + 1).coerceAtMost(604)
+                    page = sliderPage
                     preferences.edit().putInt("mushaf_page", page).apply()
                 },
-                enabled = page < 604
+                enabled = sliderPage < 604
             ) { Text("التالي") }
         }
         Slider(
