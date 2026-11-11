@@ -17,7 +17,8 @@ import java.text.Normalizer
 
 private data class QuranStats(
     val verses: Int, val words: Int, val letters: Int,
-    val dottedLetters: Int, val undottedLetters: Int, val dots: Int
+    val dottedLetters: Int, val undottedLetters: Int, val dots: Int,
+    val daggerAlifs: Int
 )
 private data class PhraseStat(val phrase: String, val count: Int, val places: List<String>)
 
@@ -40,6 +41,10 @@ private fun isArabicLetter(ch: Char): Boolean {
    hamza-bearing letters or merge distinct written forms before counting. */
 private fun arabicBaseLetters(text: String): List<Char> =
     text.filter(::isArabicLetter).toList()
+
+// U+0670 ARABIC LETTER SUPERSCRIPT ALEF (dagger alif) is a combining mark,
+// not a base letter, so count it separately without changing the Quran text.
+private fun daggerAlifCount(text: String): Int = text.count { it == '\u0670' }
 
 private fun dotsForLetter(letter: Char): Int = when (letter) {
     'ب', 'ج', 'خ', 'ذ', 'ز', 'ض', 'ظ', 'غ', 'ف', 'ن' -> 1
@@ -64,7 +69,8 @@ private fun statsFor(verses: List<Ayah>): QuranStats {
     val dotted = letters.count { dotsForLetter(it) > 0 }
     return QuranStats(
         verses.size, verses.sumOf { wordsOf(it).size }, letters.size,
-        dotted, letters.size - dotted, letters.sumOf(::dotsForLetter)
+        dotted, letters.size - dotted, letters.sumOf(::dotsForLetter),
+        verses.sumOf { daggerAlifCount(it.text) }
     )
 }
 
@@ -152,7 +158,11 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
                         StatCard("غير منقوطة", stats.undottedLetters.toString(), Modifier.weight(1f))
                         StatCard("النقاط", stats.dots.toString(), Modifier.weight(1f))
                     }
-                    Text("منهج العدّ: تُحصى الحروف العربية المكتوبة كما تظهر دون تفكيك الهمزات أو دمج صور الحروف، وتُستبعد علامات التشكيل من عدد الحروف. الألف المقصورة (ى) بلا نقاط، والتاء المربوطة (ة) بنقطتين. حساب النقاط يعتمد جدول الحروف العربية الشائعة؛ وتبقى العلامات والرسم العثماني الخاص بحاجة إلى تدقيق متخصص.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        StatCard("الألفات الخنجرية", stats.daggerAlifs.toString(), Modifier.weight(1f))
+                        Spacer(Modifier.weight(2f))
+                    }
+                    Text("منهج العدّ: تُحصى الحروف العربية المكتوبة كما تظهر دون تفكيك الهمزات أو دمج صور الحروف، وتُستبعد علامات التشكيل من عدد الحروف. الألف المقصورة (ى) بلا نقاط، والتاء المربوطة (ة) بنقطتين. حساب النقاط يعتمد جدول الحروف العربية الشائعة؛ وتبقى العلامات والرسم العثماني الخاص بحاجة إلى تدقيق متخصص. تُحصى الألف الخنجرية (ٰ، U+0670) منفصلة لأنها علامة مركبة وليست حرفاً أساسياً.")
                     Divider()
                     Text("تكرار الحروف", style = MaterialTheme.typography.titleMedium)
                     Text("الحرف — مرات الورود — مجموع نقاطه", style = MaterialTheme.typography.labelSmall)
@@ -221,11 +231,13 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
                     val verseLetters = remember(verse.text) { arabicBaseLetters(verse.text) }
                     val verseWords = remember(verse.text) { wordsOf(verse).size }
                     val verseDots = remember(verse.text) { verseLetters.sumOf(::dotsForLetter) }
+                    val verseDaggerAlifs = remember(verse.text) { daggerAlifCount(verse.text) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("${verse.number}.")
                         Text("${verseWords} كلمة")
                         Text("${verseLetters.size} حرف")
                         Text("${verseDots} نقطة")
+                        Text("${verseDaggerAlifs} خنجرية")
                     }
                 }
             }
