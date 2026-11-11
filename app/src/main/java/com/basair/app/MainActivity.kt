@@ -31,6 +31,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -223,29 +225,12 @@ private fun OriginalMushafScreen() {
         modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(
+        Text(
+            "صفحة $sliderPage من 604 — اسحب للتنقل",
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            androidx.compose.material3.TextButton(
-                onClick = {
-                    sliderPage = (sliderPage - 1).coerceAtLeast(1)
-                    page = sliderPage
-                    preferences.edit().putInt("mushaf_page", page).apply()
-                },
-                enabled = sliderPage > 1
-            ) { Text("السابق") }
-            Text("صفحة $sliderPage من 604", style = MaterialTheme.typography.titleMedium)
-            androidx.compose.material3.TextButton(
-                onClick = {
-                    sliderPage = (sliderPage + 1).coerceAtMost(604)
-                    page = sliderPage
-                    preferences.edit().putInt("mushaf_page", page).apply()
-                },
-                enabled = sliderPage < 604
-            ) { Text("التالي") }
-        }
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.titleMedium
+        )
         Slider(
             value = sliderPage.toFloat(),
             onValueChange = { sliderPage = it.toInt().coerceIn(1, 604) },
@@ -257,7 +242,28 @@ private fun OriginalMushafScreen() {
             steps = 602
         )
         AndroidView(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth().pointerInput(page) {
+                var dragDistance = 0f
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { change, dragAmount ->
+                        dragDistance += dragAmount
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        if (dragDistance < -65f && page < 604) {
+                            page += 1
+                            sliderPage = page
+                            preferences.edit().putInt("mushaf_page", page).apply()
+                        } else if (dragDistance > 65f && page > 1) {
+                            page -= 1
+                            sliderPage = page
+                            preferences.edit().putInt("mushaf_page", page).apply()
+                        }
+                        dragDistance = 0f
+                    },
+                    onDragCancel = { dragDistance = 0f }
+                )
+            },
             factory = { viewContext ->
                 WebView(viewContext).apply {
                     setBackgroundColor(android.graphics.Color.WHITE)
