@@ -217,6 +217,7 @@ private fun OriginalMushafScreen() {
     var page by rememberSaveable {
         mutableIntStateOf(preferences.getInt("mushaf_page", 1).coerceIn(1, 604))
     }
+    var sliderPage by rememberSaveable { mutableIntStateOf(page) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 4.dp),
@@ -230,23 +231,26 @@ private fun OriginalMushafScreen() {
             androidx.compose.material3.TextButton(
                 onClick = {
                     page = (page - 1).coerceAtLeast(1)
+                    sliderPage = page
                     preferences.edit().putInt("mushaf_page", page).apply()
                 },
                 enabled = page > 1
             ) { Text("السابق") }
-            Text("صفحة $page من 604", style = MaterialTheme.typography.titleMedium)
+            Text("صفحة $sliderPage من 604", style = MaterialTheme.typography.titleMedium)
             androidx.compose.material3.TextButton(
                 onClick = {
                     page = (page + 1).coerceAtMost(604)
+                    sliderPage = page
                     preferences.edit().putInt("mushaf_page", page).apply()
                 },
                 enabled = page < 604
             ) { Text("التالي") }
         }
         Slider(
-            value = page.toFloat(),
-            onValueChange = {
-                page = it.toInt().coerceIn(1, 604)
+            value = sliderPage.toFloat(),
+            onValueChange = { sliderPage = it.toInt().coerceIn(1, 604) },
+            onValueChangeFinished = {
+                page = sliderPage
                 preferences.edit().putInt("mushaf_page", page).apply()
             },
             valueRange = 1f..604f,
@@ -267,7 +271,9 @@ private fun OriginalMushafScreen() {
                 }
             },
             update = { webView ->
-                val pageFile = page.toString().padStart(3, '0') + ".svg"
+                if (webView.tag != page) {
+                    webView.tag = page
+                    val pageFile = page.toString().padStart(3, '0') + ".svg"
                 val html = """
                     <!doctype html>
                     <html lang="ar">
@@ -311,13 +317,14 @@ private fun OriginalMushafScreen() {
                     </body>
                     </html>
                 """.trimIndent()
-                webView.loadDataWithBaseURL(
-                    "https://cdn.quran.ws/svg/pages/v1.1.1/hafs-kfqc/",
-                    html,
-                    "text/html",
-                    "UTF-8",
-                    null
-                )
+                    webView.loadDataWithBaseURL(
+                        "https://cdn.quran.ws/svg/pages/v1.1.1/hafs-kfqc/",
+                        html,
+                        "text/html",
+                        "UTF-8",
+                        null
+                    )
+                }
             }
         )
         Text(
@@ -348,8 +355,9 @@ private fun BasairScreen(ayat: List<Ayah>) {
     var pendingScrollAyah by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
 
-    val currentSurahAyat = remember(ayat, currentSurah) {
-        ayat.filter { it.surah == currentSurah }
+    val ayatBySurah = remember(ayat) { ayat.groupBy { it.surah } }
+    val currentSurahAyat = remember(ayatBySurah, currentSurah) {
+        ayatBySurah[currentSurah].orEmpty()
     }
     val results = remember(ayat, query, searched) {
         if (!searched || query.isBlank()) emptyList()
