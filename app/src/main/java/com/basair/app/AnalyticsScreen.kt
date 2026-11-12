@@ -19,7 +19,8 @@ import java.text.Normalizer
 private data class QuranStats(
     val verses: Int, val words: Int, val letters: Int,
     val dottedLetters: Int, val undottedLetters: Int, val dots: Int,
-    val daggerAlifs: Int, val repeatedLetters: Int, val repeatedWords: Int
+    val daggerAlifs: Int, val repeatedLetters: Int, val repeatedWords: Int,
+    val unclassifiedDotLetters: Int
 )
 private data class PhraseStat(val phrase: String, val count: Int, val places: List<String>)
 
@@ -45,11 +46,17 @@ private fun arabicBaseLetters(text: String): List<Char> =
 // U+0670 is a combining mark, so it is counted separately from base letters.
 private fun daggerAlifCount(text: String): Int = text.count { it == '\u0670' }
 
-private fun dotsForLetter(letter: Char): Int = when (letter) {
+/*
+ * Dot counts for the standard Hafs/Madinah Arabic letter shapes.
+ * null means an unclassified glyph; it must not be silently counted as dotless.
+ */
+private fun dotsForLetter(letter: Char): Int? = when (letter) {
     'ب', 'ج', 'خ', 'ذ', 'ز', 'ض', 'ظ', 'غ', 'ف', 'ن' -> 1
     'ت', 'ق', 'ي', 'ة', 'ئ' -> 2
     'ث', 'ش' -> 3
-    else -> 0
+    'ء', 'ا', 'أ', 'إ', 'آ', 'ٱ', 'ؤ', 'د', 'ر', 'س', 'ص',
+    'ط', 'ع', 'ح', 'م', 'ل', 'ه', 'و', 'ى', 'ك' -> 0
+    else -> null
 }
 
 private fun wordKey(word: String): String {
@@ -65,16 +72,20 @@ private fun wordsOf(ayah: Ayah): List<String> =
 
 private fun statsFor(verses: List<Ayah>): QuranStats {
     val letters = verses.flatMap { arabicBaseLetters(it.text) }
-    val dotted = letters.count { dotsForLetter(it) > 0 }
+    val classified = letters.mapNotNull { letter -> dotsForLetter(letter)?.let { letter to it } }
+    val dotted = classified.count { it.second > 0 }
+    val undotted = classified.count { it.second == 0 }
+    val totalDots = classified.sumOf { it.second }
     val wordCounts = verses.flatMap { wordsOf(it) }.map { wordKey(it) }
         .filter { it.isNotBlank() }.groupingBy { it }.eachCount()
     val letterCounts = letters.groupingBy { it }.eachCount()
     return QuranStats(
         verses.size, verses.sumOf { wordsOf(it).size }, letters.size,
-        dotted, letters.size - dotted, letters.sumOf(::dotsForLetter),
+        dotted, undotted, totalDots,
         verses.sumOf { daggerAlifCount(it.text) },
         letterCounts.count { it.value > 1 },
-        wordCounts.count { it.value > 1 }
+        wordCounts.count { it.value > 1 },
+        letters.size - classified.size
     )
 }
 
@@ -201,7 +212,7 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 StatCard("أنواع كلمات تكررت", stats.repeatedWords.toString(), Modifier.weight(1f))
-                                Spacer(Modifier.weight(1f))
+                                StatCard("حروف غير مصنفة", stats.unclassifiedDotLetters.toString(), Modifier.weight(1f))
                             }
                         }
                     }
@@ -213,7 +224,7 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
                             "تُحسب الألف الخنجرية (ٰ) منفصلة. عدد الكلمات المتكررة هنا هو عدد الكلمات المختلفة " +
                             "التي تكررت بعد إزالة التشكيل وتوحيد بعض صور الألف والياء. وعدد الحروف المتكررة " +
                             "هو عدد أنواع الحروف التي ظهر كل منها أكثر من مرة. عدّ النقاط يعتمد جدول نقاط " +
-                            "الحروف العربية الشائعة، وقد يحتاج الرسم العثماني وعلاماته الخاصة إلى تدقيق متخصص.",
+                            "الحروف العربية الشائعة، والحروف غير المصنفة لا تُحسب ضمن الحروف بلا نقاط. عدد غير المصنف: ${stats.unclassifiedDotLetters}.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
