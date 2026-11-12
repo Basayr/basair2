@@ -10,6 +10,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -18,7 +19,7 @@ import java.text.Normalizer
 private data class QuranStats(
     val verses: Int, val words: Int, val letters: Int,
     val dottedLetters: Int, val undottedLetters: Int, val dots: Int,
-    val daggerAlifs: Int
+    val daggerAlifs: Int, val repeatedLetters: Int, val repeatedWords: Int
 )
 private data class PhraseStat(val phrase: String, val count: Int, val places: List<String>)
 
@@ -37,18 +38,16 @@ private fun isArabicLetter(ch: Char): Boolean {
     )
 }
 
-/* Count the written Arabic letter code points as they appear; do not decompose
-   hamza-bearing letters or merge distinct written forms before counting. */
+/* Count written Arabic letter code points as displayed; do not decompose hamza forms. */
 private fun arabicBaseLetters(text: String): List<Char> =
     text.filter(::isArabicLetter).toList()
 
-// U+0670 ARABIC LETTER SUPERSCRIPT ALEF (dagger alif) is a combining mark,
-// not a base letter, so count it separately without changing the Quran text.
+// U+0670 is a combining mark, so it is counted separately from base letters.
 private fun daggerAlifCount(text: String): Int = text.count { it == '\u0670' }
 
 private fun dotsForLetter(letter: Char): Int = when (letter) {
     'ب', 'ج', 'خ', 'ذ', 'ز', 'ض', 'ظ', 'غ', 'ف', 'ن' -> 1
-    'ت', 'ق', 'ي', 'ة' -> 2
+    'ت', 'ق', 'ي', 'ة', 'ئ' -> 2
     'ث', 'ش' -> 3
     else -> 0
 }
@@ -67,10 +66,15 @@ private fun wordsOf(ayah: Ayah): List<String> =
 private fun statsFor(verses: List<Ayah>): QuranStats {
     val letters = verses.flatMap { arabicBaseLetters(it.text) }
     val dotted = letters.count { dotsForLetter(it) > 0 }
+    val wordCounts = verses.flatMap { wordsOf(it) }.map { wordKey(it) }
+        .filter { it.isNotBlank() }.groupingBy { it }.eachCount()
+    val letterCounts = letters.groupingBy { it }.eachCount()
     return QuranStats(
         verses.size, verses.sumOf { wordsOf(it).size }, letters.size,
         dotted, letters.size - dotted, letters.sumOf(::dotsForLetter),
-        verses.sumOf { daggerAlifCount(it.text) }
+        verses.sumOf { daggerAlifCount(it.text) },
+        letterCounts.count { it.value > 1 },
+        wordCounts.count { it.value > 1 }
     )
 }
 
@@ -110,30 +114,44 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
     val wordFrequency = remember(activeAyat) {
         activeAyat.flatMap { wordsOf(it) }.map { wordKey(it) }.filter { it.isNotBlank() }
             .groupingBy { it }.eachCount()
-            .entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .entries.filter { it.value > 1 }
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .take(30)
     }
     val phrases = remember(activeAyat) { repeatedPhrases(activeAyat) }
     val occurrences = remember(activeAyat, search) {
         if (search.isBlank()) emptyList() else activeAyat.filter { it.text.contains(search, false) }
     }
+    val green = MaterialTheme.colorScheme.primary
+    val softSurface = MaterialTheme.colorScheme.surfaceVariant
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)) {
-        Text("لوحة التدبر والإحصاء", style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp)) {
+        Text(
+            "لوحة التدبر والإحصاء",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             FilterChip(selected = scope == 0, onClick = { scope = 0 }, label = { Text("القرآن كاملاً") })
             FilterChip(selected = scope == 1, onClick = { scope = 1 }, label = { Text("سورة") })
             if (scope == 1) {
                 Box {
                     TextButton(onClick = { menuExpanded = true }) {
-                        Text(surahNames[selectedSurah - 1] + " ▾")
+                        Text("${surahNames[selectedSurah - 1]} ▾")
                     }
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                         surahNames.forEachIndexed { index, name ->
-                            DropdownMenuItem(text = { Text("${index + 1}. $name") },
-                                onClick = { selectedSurah = index + 1; menuExpanded = false })
+                            DropdownMenuItem(
+                                text = { Text("${index + 1}. $name") },
+                                onClick = { selectedSurah = index + 1; menuExpanded = false }
+                            )
                         }
                     }
                 }
@@ -142,102 +160,175 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
         if (ayat.isEmpty()) {
             Text("بيانات القرآن غير متاحة؛ تعذر حساب الإحصاءات.")
         } else {
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            LazyColumn(
+                Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 18.dp)
+            ) {
                 item {
-                    Text(if (scope == 0) "الإحصاء العام للقرآن الكريم"
-                        else "إحصاءات سورة ${surahNames[selectedSurah - 1]}",
-                        style = MaterialTheme.typography.titleMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        StatCard("الآيات", stats.verses.toString(), Modifier.weight(1f))
-                        StatCard("الكلمات", stats.words.toString(), Modifier.weight(1f))
-                        StatCard("الحروف", stats.letters.toString(), Modifier.weight(1f))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = softSurface),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                            Text(
+                                if (scope == 0) "الإحصاء العام للقرآن الكريم"
+                                else "إحصاءات سورة ${surahNames[selectedSurah - 1]}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = green,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                StatCard("عدد الآيات", stats.verses.toString(), Modifier.weight(1f))
+                                StatCard("عدد الكلمات", stats.words.toString(), Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                StatCard("الحروف المكتوبة", stats.letters.toString(), Modifier.weight(1f))
+                                StatCard("مجموع النقاط", stats.dots.toString(), Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                StatCard("حروف منقوطة", stats.dottedLetters.toString(), Modifier.weight(1f))
+                                StatCard("حروف بلا نقاط", stats.undottedLetters.toString(), Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                StatCard("الألفات الخنجرية", stats.daggerAlifs.toString(), Modifier.weight(1f))
+                                StatCard("أنواع حروف تكررت", stats.repeatedLetters.toString(), Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                StatCard("أنواع كلمات تكررت", stats.repeatedWords.toString(), Modifier.weight(1f))
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        StatCard("منقوطة", stats.dottedLetters.toString(), Modifier.weight(1f))
-                        StatCard("غير منقوطة", stats.undottedLetters.toString(), Modifier.weight(1f))
-                        StatCard("النقاط", stats.dots.toString(), Modifier.weight(1f))
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        StatCard("الألفات الخنجرية", stats.daggerAlifs.toString(), Modifier.weight(1f))
-                        Spacer(Modifier.weight(2f))
-                    }
-                    Text("منهج العدّ: تُحصى الحروف العربية المكتوبة كما تظهر دون تفكيك الهمزات أو دمج صور الحروف، وتُستبعد علامات التشكيل من عدد الحروف. الألف المقصورة (ى) بلا نقاط، والتاء المربوطة (ة) بنقطتين. حساب النقاط يعتمد جدول الحروف العربية الشائعة؛ وتبقى العلامات والرسم العثماني الخاص بحاجة إلى تدقيق متخصص. تُحصى الألف الخنجرية (ٰ، U+0670) منفصلة لأنها علامة مركبة وليست حرفاً أساسياً.")
-                    Divider()
-                    Text("تكرار الحروف", style = MaterialTheme.typography.titleMedium)
-                    Text("الحرف — مرات الورود — مجموع نقاطه", style = MaterialTheme.typography.labelSmall)
+                }
+                item {
+                    SectionTitle("منهجية العدّ")
+                    Text(
+                        "يُحسب الحرف بحسب رمزه المكتوب في النص، وتُستبعد حركات التشكيل من عدد الحروف. " +
+                            "تُحسب الألف الخنجرية (ٰ) منفصلة. عدد الكلمات المتكررة هنا هو عدد الكلمات المختلفة " +
+                            "التي تكررت بعد إزالة التشكيل وتوحيد بعض صور الألف والياء. وعدد الحروف المتكررة " +
+                            "هو عدد أنواع الحروف التي ظهر كل منها أكثر من مرة. عدّ النقاط يعتمد جدول نقاط " +
+                            "الحروف العربية الشائعة، وقد يحتاج الرسم العثماني وعلاماته الخاصة إلى تدقيق متخصص.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                item {
+                    SectionTitle("توزيع الحروف")
+                    Text("الحرف وعدد مرات ظهوره وعدد نقاطه وفق جدول العدّ أعلاه.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(letterFrequency) { entry ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(entry.key.toString(), fontSize = 21.sp)
-                        Text("${entry.value} مرة")
-                        Text("${entry.value * dotsForLetter(entry.key)} نقطة")
+                    Card {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(entry.key.toString(), fontSize = 23.sp, color = green, fontWeight = FontWeight.Bold)
+                            Text("${entry.value} مرة")
+                            Text("${entry.value * dotsForLetter(entry.key)} نقطة")
+                        }
                     }
                 }
                 item {
-                    Divider()
-                    Text("أكثر 30 كلمة تكراراً", style = MaterialTheme.typography.titleMedium)
-                    Text("توحيد بعض صور الألف والياء وإزالة التشكيل لأغراض الإحصاء فقط.")
+                    SectionTitle("الكلمات الأكثر تكراراً")
+                    Text("تظهر هنا الكلمات التي تكررت مرتين فأكثر بعد التطبيع الإحصائي، ولا تُدمج هذه النتائج مع البحث الحرفي.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(wordFrequency) { entry ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(entry.key, fontSize = 17.sp)
-                        Text("${entry.value} مرة")
+                    Card {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(entry.key, fontSize = 18.sp)
+                            Text("${entry.value} مرات", color = green, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
                 item {
-                    Divider()
-                    Text("عبارات ثلاثية متكررة", style = MaterialTheme.typography.titleMedium)
-                    Text("العبارات المتجاورة المتكررة ومواضعها بعد تطبيع إحصائي للكلمات.")
+                    SectionTitle("عبارات ثلاثية متكررة")
+                    Text("تُقارن العبارات بعد التطبيع الإحصائي للكلمات، وتُعرض مواضع كل تطابق.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(phrases) { phrase ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(9.dp)) {
+                    Card {
+                        Column(Modifier.padding(12.dp)) {
                             Text(phrase.phrase, fontSize = 17.sp, textAlign = TextAlign.Right,
                                 modifier = Modifier.fillMaxWidth())
-                            Text("تكررت ${phrase.count} مرات")
-                            Text(phrase.places.take(8).joinToString(" • "),
-                                style = MaterialTheme.typography.labelSmall)
+                            Text("عدد مرات الظهور: ${phrase.count}", color = green,
+                                fontWeight = FontWeight.SemiBold)
+                            Text(phrase.places.joinToString(" • "),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
                 item {
-                    Divider()
-                    Text("البحث عن مواضع كلمة أو عبارة", style = MaterialTheme.typography.titleMedium)
-                    BasicTextField(value = search, onValueChange = { search = it },
-                        modifier = Modifier.fillMaxWidth().padding(10.dp),
-                        textStyle = TextStyle(fontSize = 17.sp, textAlign = TextAlign.Right),
-                        decorationBox = { inner ->
-                            if (search.isEmpty()) Text("اكتب النص كما يظهر في المصحف")
-                            inner()
-                        })
-                    Text("عدد الآيات المطابقة حرفياً: ${occurrences.size}")
+                    SectionTitle("البحث الحرفي في النص")
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("اكتب الكلمة أو العبارة كما تظهر في المصحف") },
+                        singleLine = false,
+                        textStyle = TextStyle(fontSize = 16.sp, textAlign = TextAlign.Right)
+                    )
+                    Text("عدد الآيات التي تحتوي النص حرفياً: ${occurrences.size}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = green)
                 }
                 items(occurrences.take(200)) { verse ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(8.dp)) {
+                    Card {
+                        Column(Modifier.padding(12.dp)) {
                             Text(verse.text, textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth())
                             Text("${surahNames[verse.surah - 1]} • الآية ${verse.number}",
-                                style = MaterialTheme.typography.labelSmall)
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
                 item {
-                    Divider()
-                    Text("إحصاء كل آية", style = MaterialTheme.typography.titleMedium)
-                    Text("عدد الكلمات والحروف والنقاط في كل آية ضمن النطاق المختار.")
+                    SectionTitle("إحصاء كل آية")
+                    Text("كل آية مع اسم سورتها ورقمها، لتفادي اختلاط ترقيم الآيات عند الانتقال بين السور.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(activeAyat) { verse ->
                     val verseLetters = remember(verse.text) { arabicBaseLetters(verse.text) }
                     val verseWords = remember(verse.text) { wordsOf(verse).size }
                     val verseDots = remember(verse.text) { verseLetters.sumOf(::dotsForLetter) }
                     val verseDaggerAlifs = remember(verse.text) { daggerAlifCount(verse.text) }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("${verse.number}.")
-                        Text("${verseWords} كلمة")
-                        Text("${verseLetters.size} حرف")
-                        Text("${verseDots} نقطة")
-                        Text("${verseDaggerAlifs} خنجرية")
+                    Card {
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                            Text(
+                                "${surahNames[verse.surah - 1]}  •  الآية ${verse.number}",
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Right,
+                                color = green,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(7.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                MiniStat("كلمات", verseWords.toString(), Modifier.weight(1f))
+                                MiniStat("حروف", verseLetters.size.toString(), Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                MiniStat("نقاط", verseDots.toString(), Modifier.weight(1f))
+                                MiniStat("ألفات خنجرية", verseDaggerAlifs.toString(), Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
             }
@@ -246,12 +337,34 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
 }
 
 @Composable
+private fun SectionTitle(title: String) {
+    Text(title, style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+}
+
+@Composable
 private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     Card(modifier = modifier) {
-        Column(Modifier.fillMaxWidth().padding(7.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, style = MaterialTheme.typography.titleLarge)
-            Text(label, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 11.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(value, style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun MiniStat(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small) {
+        Row(Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.labelSmall)
+            Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
         }
     }
 }
