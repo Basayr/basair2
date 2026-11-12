@@ -244,7 +244,7 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
                         ) {
                             Text(entry.key.toString(), fontSize = 23.sp, color = green, fontWeight = FontWeight.Bold)
                             Text("${entry.value} مرة")
-                            Text("${entry.value * dotsForLetter(entry.key)} نقطة")
+                            Text("${entry.value * (dotsForLetter(entry.key) ?: 0)} نقطة")
                         }
                     }
                 }
@@ -318,7 +318,7 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
                 items(activeAyat) { verse ->
                     val verseLetters = remember(verse.text) { arabicBaseLetters(verse.text) }
                     val verseWords = remember(verse.text) { wordsOf(verse).size }
-                    val verseDots = remember(verse.text) { verseLetters.sumOf(::dotsForLetter) }
+                    val verseDots = remember(verse.text) { verseLetters.sumOf { dotsForLetter(it) ?: 0 } }
                     val verseDaggerAlifs = remember(verse.text) { daggerAlifCount(verse.text) }
                     Card {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {
