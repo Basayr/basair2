@@ -319,6 +319,9 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
                     val verseLetters = remember(verse.text) { arabicBaseLetters(verse.text) }
                     val verseWords = remember(verse.text) { wordsOf(verse).size }
                     val verseDots = remember(verse.text) { verseLetters.sumOf { dotsForLetter(it) ?: 0 } }
+                    val verseDotted = remember(verse.text) { verseLetters.count { (dotsForLetter(it) ?: 0) > 0 } }
+                    val verseUndotted = remember(verse.text) { verseLetters.count { dotsForLetter(it) == 0 } }
+                    val verseUnknown = remember(verse.text) { verseLetters.count { dotsForLetter(it) == null } }
                     val verseDaggerAlifs = remember(verse.text) { daggerAlifCount(verse.text) }
                     Card {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -336,8 +339,18 @@ fun AnalyticsScreen(ayat: List<Ayah>) {
                             }
                             Spacer(Modifier.height(6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                MiniStat("نقاط", verseDots.toString(), Modifier.weight(1f))
+                                MiniStat("حروف منقوطة", verseDotted.toString(), Modifier.weight(1f))
+                                MiniStat("بلا نقاط", verseUndotted.toString(), Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                MiniStat("مجموع النقاط", verseDots.toString(), Modifier.weight(1f))
                                 MiniStat("ألفات خنجرية", verseDaggerAlifs.toString(), Modifier.weight(1f))
+                            }
+                            if (verseUnknown > 0) {
+                                Text("حروف غير مصنفة: $verseUnknown",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
