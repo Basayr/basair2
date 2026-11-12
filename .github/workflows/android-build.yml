@@ -1,6 +1,8 @@
 name: Android build
 on:
   push:
+    branches: [ "main", "perf/mushaf-navigation" ]
+  pull_request:
     branches: [ "main" ]
   workflow_dispatch:
 
